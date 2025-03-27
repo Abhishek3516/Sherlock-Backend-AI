@@ -59,7 +59,7 @@ class ChatHistory:
             # Print the actual query and parameters for debugging
             print(f"Query: {query}")
             print(f"Parameters: {(session_id, doc_category, question, response)}")
-            raise HTTPException(status_code= status, detail = str(e))
+            raise HTTPException(status_code= status.HTTP_404_NOT_FOUND, detail = str(e))
             
     def get_chat_history(self, doc_category=None, session_id=None):
         """

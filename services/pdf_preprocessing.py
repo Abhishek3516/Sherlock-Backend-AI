@@ -37,20 +37,20 @@ class PDF_reader:
             self.existing_ids.extend(new_id)
         return new_id
 
-    def create_child_docs(self,page,parent_id):
+    def create_child_docs(self,page,parent_id, file_id):
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=200, chunk_overlap=50)
         child_chunks = text_splitter.split_text(page)
 
         for chunk in child_chunks:
             doc = Document(page_content = chunk,
-                            metadata = {"file_id":str(uuid.uuid4()),
+                            metadata = {"file_id": file_id,
                                             "document_id":parent_id,
                                             "doc_type":self.doc_type})
             
             self.child_docs.append(doc)
             
 
-    def create_parent_docs(self):
+    def create_parent_docs(self, file_id):
         self.parent_docs = []
         self.child_docs = []
         for ix,page in enumerate(self.extracted_pages):
@@ -62,14 +62,14 @@ class PDF_reader:
             page = self.table_identification(page)
 
             doc = Document(page_content = page,
-                           metadata = {"file_id": str(uuid.uuid4()),
+                           metadata = {"file_id": file_id,
                                         "document_id":doc_id,
                                         "doc_type":self.doc_type})
             
             self.parent_docs.append(doc)
             
             #create child docs
-            self.create_child_docs(page,doc_id)
+            self.create_child_docs(page,doc_id, file_id)
 
     def table_identification(self,page_content,threshold=30):
         """
@@ -122,11 +122,12 @@ class PDF_reader:
         result = llm.invoke(prompt).content
         return result
                         
-    def create_embeddings(self,filename, user_id):
-        pdf_path = f'.\saved_files\{user_id}'
-        file_path = os.path.join(pdf_path,filename)
+    def create_embeddings(self,filename):
+        # pdf_path = f'.\saved_files\{user_id}'
+        file_path = filename
         self.read_pdf(file_path)
-        self.create_parent_docs()
+        file_id = str(uuid.uuid4())
+        self.create_parent_docs(file_id)
         
         parent_vecDB.add_documents(self.parent_docs) 
         child_vecDB.add_documents(self.child_docs)

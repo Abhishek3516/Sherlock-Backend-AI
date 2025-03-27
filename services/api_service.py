@@ -55,7 +55,7 @@ async def upload_files_conversation(files, doc_type, user_id):
 
     if newly_uploaded:
         for file_name in newly_uploaded:
-            pdf_reader.create_embeddings(filename=file_path, user_id=user_id)
+            pdf_reader.create_embeddings(filename=file_path)
     
     return {
         "message": f"Successfully uploaded and processed {len(newly_uploaded)} files.",
