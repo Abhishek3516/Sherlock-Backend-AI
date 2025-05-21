@@ -1,4 +1,5 @@
 from PyPDF2 import PdfReader
+from fastapi import HTTPException
 from services.get_model import Call_Models
 from services.vectorDB import PGVectorDB
 from langchain_core.documents import Document
@@ -27,8 +28,11 @@ class PDF_reader:
         self.doc_type = doc_type
 
     def read_pdf(self,path):
-        file = PdfReader(path)
-        self.extracted_pages = [page.extract_text() for page in file.pages]
+        try:
+            file = PdfReader(path)
+            self.extracted_pages = [page.extract_text() for page in file.pages]
+        except Exception as e:
+            raise HTTPException(status_code = 400, detail=str(e))
     
     def get_unique_id(self):
         new_id = str(uuid.uuid4())
@@ -38,38 +42,44 @@ class PDF_reader:
         return new_id
 
     def create_child_docs(self,page,parent_id, file_id):
-        text_splitter = RecursiveCharacterTextSplitter(chunk_size=200, chunk_overlap=50)
-        child_chunks = text_splitter.split_text(page)
+        try:
+            text_splitter = RecursiveCharacterTextSplitter(chunk_size=200, chunk_overlap=50)
+            child_chunks = text_splitter.split_text(page)
 
-        for chunk in child_chunks:
-            doc = Document(page_content = chunk,
-                            metadata = {"file_id": file_id,
-                                            "document_id":parent_id,
-                                            "doc_type":self.doc_type})
-            
-            self.child_docs.append(doc)
+            for chunk in child_chunks:
+                doc = Document(page_content = chunk,
+                                metadata = {"file_id": file_id,
+                                                "document_id":parent_id,
+                                                "doc_type":self.doc_type})
+                
+                self.child_docs.append(doc)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail= str(e))
             
 
     def create_parent_docs(self, file_id):
-        self.parent_docs = []
-        self.child_docs = []
-        for ix,page in enumerate(self.extracted_pages):
-            print("Page No {} processed out of {} pages".format(ix+1,len(self.extracted_pages)))
-            #Create Id
-            doc_id = self.get_unique_id()
+        try:
+            self.parent_docs = []
+            self.child_docs = []
+            for ix,page in enumerate(self.extracted_pages):
+                print("Page No {} processed out of {} pages".format(ix+1,len(self.extracted_pages)))
+                #Create Id
+                doc_id = self.get_unique_id()
 
-            #Table identification
-            page = self.table_identification(page)
+                #Table identification
+                page = self.table_identification(page)
 
-            doc = Document(page_content = page,
-                           metadata = {"file_id": file_id,
-                                        "document_id":doc_id,
-                                        "doc_type":self.doc_type})
-            
-            self.parent_docs.append(doc)
-            
-            #create child docs
-            self.create_child_docs(page,doc_id, file_id)
+                doc = Document(page_content = page,
+                            metadata = {"file_id": file_id,
+                                            "document_id":doc_id,
+                                            "doc_type":self.doc_type})
+                
+                self.parent_docs.append(doc)
+                
+                #create child docs
+                self.create_child_docs(page,doc_id, file_id)
+        except Exception as e:
+            raise HTTPException(status_code = 400, detail = str(e))
 
     def table_identification(self,page_content,threshold=30):
         """
@@ -122,16 +132,19 @@ class PDF_reader:
         result = llm.invoke(prompt).content
         return result
                         
-    def create_embeddings(self,filename):
+    def create_embeddings(self,filename, file_id):
         # pdf_path = f'.\saved_files\{user_id}'
         file_path = filename
         self.read_pdf(file_path)
-        file_id = str(uuid.uuid4())
+        file_id = file_id
         self.create_parent_docs(file_id)
         
-        parent_vecDB.add_documents(self.parent_docs) 
-        child_vecDB.add_documents(self.child_docs)
-    
+        try:
+            parent_vecDB.add_documents(self.parent_docs) 
+            child_vecDB.add_documents(self.child_docs)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail= str(e))
+        
     def tiktoken_encoder(self):
         self.encoding = tiktoken.get_encoding("o200k_base")
 

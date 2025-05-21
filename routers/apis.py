@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 from fastapi import APIRouter, File, Form, UploadFile
 import logging
 
@@ -16,6 +16,7 @@ router = APIRouter(
 
 class ChatRequestBody(BaseModel):
     user_id: str
+    file_ids: Optional[List[str]] = None
     doc_type: str
     prompt: str
 
@@ -33,7 +34,7 @@ async def upload_files_and_conversations(
 @router.post("/sherlock-conversation")
 async def chat(request: ChatRequestBody):
     """Get answer to query from PDF documents"""
-
+    
     response = await api_service.conversations(request)
 
     return response
@@ -55,5 +56,16 @@ async def manage_options(
         ):
 
     response = await api_service.manage_category(user_id)
+
+    return response
+
+
+@router.get("/get-file-details")
+async def get_uploaded_file_details_by_doc_type(
+            user_id: str,
+            doc_type: str 
+        ):
+
+    response = await api_service.file_details_by_doc_type(user_id, doc_type)
 
     return response

@@ -69,24 +69,35 @@ class RUN_Inference:
         parent_chunk_filtered = [i.page_content for i in parent_chunk_filtered]
         return parent_chunk_filtered
     
-    def get_docs_v2(self,question,document_type,threshold=None,k=5):
-        thresh_filter_chunks = []
-        parent_chunk_filtered = []
-        child_chunks = child_vecDB.similarity_search_with_relevance_scores(question,k=30,filter = {"doc_type":document_type})
-        chunk_scores = [chunk[1] for chunk in child_chunks]
-        threshold = np.mean(chunk_scores)
-        for chunk in child_chunks:
+    def get_docs_v2(self,question,document_type, file_ids = None, threshold=None,k=5):
+        try: 
+            thresh_filter_chunks = []
+            parent_chunk_filtered = []
+
+            filter_dict = {"doc_type": document_type}
+        
+            # Add file_ids to filter if provided
+            if (file_ids is not None) and len(file_ids) > 0:
+                filter_dict["file_id"] = {"$in": file_ids}
+
+            child_chunks = child_vecDB.similarity_search_with_relevance_scores(question,k=30,filter = filter_dict)
+            chunk_scores = [chunk[1] for chunk in child_chunks]
+            threshold = np.mean(chunk_scores)
+            for chunk in child_chunks:
                 if chunk[1] >= threshold:
                     thresh_filter_chunks.append(chunk[0])
-        
-        filtered_metadata = self.get_unique_docids(thresh_filter_chunks)
+            
+            filtered_metadata = self.get_unique_docids(thresh_filter_chunks)
 
-        for filter in filtered_metadata:
-             parent_chunk_filtered.append(parent_vecDB.similarity_search(question,k=1,filter = filter)[0])
+            for filter in filtered_metadata:
+                parent_chunk_filtered.append(parent_vecDB.similarity_search(question,k=1,filter = filter)[0])
+            
+            parent_chunk_filtered = parent_chunk_filtered[:k]
+            parent_chunk_filtered = [i.page_content for i in parent_chunk_filtered]
+            return child_chunks,parent_chunk_filtered
         
-        parent_chunk_filtered = parent_chunk_filtered[:k]
-        parent_chunk_filtered = [i.page_content for i in parent_chunk_filtered]
-        return child_chunks,parent_chunk_filtered
+        except Exception as e:
+            raise HTTPException(status_code= 400, detail= str(e))
     
     def conversation_rephrase(self,question,selected_doc_type,session_id):
         #Get history
@@ -116,11 +127,11 @@ class RUN_Inference:
 
     
 
-    def get_answer(self,question,selected_doc_type, user_id):
+    def get_answer(self,question,selected_doc_type, user_id, file_ids=None):
 
         session_id = str(uuid.uuid4())
         
-        context = self.get_docs_v2(question,document_type=selected_doc_type)
+        context = self.get_docs_v2(question,document_type=selected_doc_type, file_ids= file_ids)
         
         question = self.conversation_rephrase(question,selected_doc_type, session_id)
         

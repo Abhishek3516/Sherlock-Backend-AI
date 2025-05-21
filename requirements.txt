@@ -11,3 +11,9 @@ psycopg-binary
 python-dotenv
 python-multipart
 
+# To install psycopg2 follow below installations
+ 
+# (1) pip install --upgrade wheel
+# (2) pip install --upgrade setuptools
+# (3) pip install psycopg2
+

@@ -121,7 +121,7 @@ class DatabaseOperations:
             print(f"Error checking doc_id: {e}")
             return ""
 
-    def document_upload_info(self, doc_name: str, user_id: str):
+    def document_upload_info(self, doc_name: str, user_id: str, doc_type: str):
         """
         Insert a new document upload entry into user_doc_upload_tbl.
         Ensures that the generated document ID (UUID) is unique.
@@ -130,23 +130,67 @@ class DatabaseOperations:
             doc_name (str): Name of the uploaded document.
             user_id (str): Unique User ID.
         """
+        new_doc_id = str(uuid.uuid4())  # Generate a new UUID for the document
         while True:
-            new_doc_id = str(uuid.uuid4())  # Generate a new UUID for the document
             
             # Check if the generated doc_id already exists in the table
             if not self.check_doc_id_exists(new_doc_id):  # If doc_id does not exist, insert it
                 query = """
-                INSERT INTO public.user_doc_upload_tbl (user_id, doc_name, doc_id) 
-                VALUES (%s, %s, %s);
+                INSERT INTO public.user_doc_upload_tbl (user_id, doc_name, doc_id, doc_type) 
+                VALUES (%s, %s, %s, %s);
                 """
 
                 try:
                     with self._get_connection() as conn:
                         with conn.cursor() as cur:
-                            cur.execute(query, (user_id, doc_name, new_doc_id))
+                            cur.execute(query, (user_id, doc_name, new_doc_id, doc_type))
                         conn.commit()  # Commit the transaction
                     print(f"✅ New document inserted with doc_id: {new_doc_id}")
                 except psycopg2.Error as e:
                     print(f"Error inserting document: {e}")      
                 
-                break  # Exit the loop once a valid doc_id is inserted
+                # break  # Exit the loop once a valid doc_id is inserted
+            
+            return new_doc_id
+        
+
+    def extract_doc_upload_table_data(self, user_id: str, doc_type: str) -> Dict[str, Any]:
+        """
+        Extract all upload doc data according to the given user id and doc type from user_doc_upload_tbl table.
+
+        Returns:
+             Dict[str, Any]: Query results formatted as a dictionary with user_id, doc_type, and doc_details.
+        """
+        query = """SELECT 
+                    %s AS user_id, 
+                    %s AS doc_type,
+                    json_agg(
+                        json_build_object(
+                            'doc_name', doc_name,
+                            'doc_id', doc_id
+                        )
+                    ) AS doc_details
+                    FROM public.user_doc_upload_tbl 
+                    WHERE user_id = %s AND doc_type = %s
+                    GROUP BY 1, 2;
+                """
+        
+        try:
+            with self._get_connection() as conn:
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    cur.execute(query, (user_id, doc_type, user_id, doc_type))
+                    result = cur.fetchall()
+                    
+                    # If there are no matching records, return the structure with an empty doc_details list
+                    if not result:
+                        return {
+                            "user_id": user_id,
+                            "doc_type": doc_type,
+                            "doc_details": []
+                        }
+                    
+                    return result[0]
+                
+        except psycopg2.Error as e:
+            print(f"Error extracting data: {e}")
+            raise HTTPException(status_code = status, detail = str(e))  
