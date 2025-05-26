@@ -194,3 +194,70 @@ class DatabaseOperations:
         except psycopg2.Error as e:
             print(f"Error extracting data: {e}")
             raise HTTPException(status_code = status, detail = str(e))  
+        
+    def extract_all_chat_history_by_user_id(self, user_id):
+        """
+            Extract all chat history data according to the given user id from user_chat_history_table table.
+
+            Returns:
+                Dict[str, Any]: Query results formatted as a dictionary .
+        """
+
+        query = """
+                    SELECT
+                        user_id,
+                        session_id,
+                        doc_types,
+                        response_content,
+                        created_time
+                    FROM (
+                        SELECT
+                            user_id,
+                            session_id,
+                            array_agg(DISTINCT unnested_doc_type ORDER BY unnested_doc_type) as doc_types,
+                            (
+                                SELECT json_agg(
+                                    json_build_object('role', role_type, 'content', content_text)
+                                    ORDER BY sort_order
+                                )
+                                FROM (
+                                    SELECT 'user' as role_type, question as content_text,
+                                        time_stamp, (time_stamp::text || '_1') as sort_order
+                                    FROM public.chat_history_table t2
+                                    WHERE t2.user_id = t1.user_id AND t2.session_id = t1.session_id
+                                    UNION ALL
+                                    SELECT 'assistant' as role_type, response as content_text,
+                                        time_stamp, (time_stamp::text || '_2') as sort_order
+                                    FROM public.chat_history_table t3
+                                    WHERE t3.user_id = t1.user_id AND t3.session_id = t1.session_id
+                                ) conversation_parts
+                            ) as response_content,
+                            MIN(time_stamp) as created_time
+                        FROM (
+                            SELECT 
+                                user_id,
+                                session_id,
+                                time_stamp,
+                                question,
+                                response,
+                                TRIM(unnest(string_to_array(doc_category, ','))) as unnested_doc_type
+                            FROM public.chat_history_table
+                            WHERE doc_category IS NOT NULL AND doc_category != ''
+                        ) t1
+                        WHERE t1.user_id = %s
+                        GROUP BY user_id, session_id
+                    ) grouped_data
+                    ORDER BY user_id, session_id;
+                """ 
+        try:
+            with self._get_connection() as conn:
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    cur.execute(query, (user_id,))
+                    result = cur.fetchall()
+
+                    if not result:
+                        pass
+                    return result
+        except psycopg2.Error as e:
+            print(f"Error extracting data: {e}")
+            raise HTTPException(status_code = status, detail = str(e))

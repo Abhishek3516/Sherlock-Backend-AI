@@ -2,6 +2,7 @@ import os
 import shutil
 
 from fastapi import HTTPException, status
+from schemas import api_schemas
 from services.pipline_run import *
 from services.pdf_preprocessing import *
 from services.user_doc_types import *
@@ -26,7 +27,7 @@ def get_doc_types() -> List[str]:
         return list(options_data['doc_type'])
     return []
 
-async def upload_files_conversation(files, doc_type, user_id):
+async def upload_files_create_embeddings(files, doc_type, user_id):
 
     # Initialize PDF reader
     pdf_reader = PDF_reader(doc_type)
@@ -59,26 +60,22 @@ async def upload_files_conversation(files, doc_type, user_id):
         for file_var in newly_uploaded:
             pdf_reader.create_embeddings(filename=file_var["file_path"], file_id=file_var["file_id"])
     
-    return {
-        "message": f"Successfully uploaded and processed {len(file_details)} files.",
-        "uploaded_files": file_details
-    }
+    return file_details
 
 
 async def add_new_category(user_id, new_option):
 
     db_op.update_table_data(user_id,new_option)
 
-    return {
-        "status_code": 200,
-        "message": "Option added successfully!"
-    }
+    response = api_schemas.CommonResponse(status_code=200, data="Option added successfully!")
+    return response
 
 async def manage_category(user_id):
 
     data = db_op.extract_table_data_by_user_id(user_id)
+    response = api_schemas.ManageOptionResponse(status_code=200, data=data)
+    return response
 
-    return data
 
 async def conversations(request):
     
@@ -87,7 +84,8 @@ async def conversations(request):
         request.prompt, 
         selected_doc_type=request.doc_type, 
         user_id=request.user_id,
-        file_ids = request.file_ids
+        session_id = request.session_id,
+        doc_file_mapping = request.doc_type_file_mapping
     )
 
     return response
@@ -95,5 +93,13 @@ async def conversations(request):
 async def file_details_by_doc_type(user_id, doc_type):
 
     data = db_op.extract_doc_upload_table_data(user_id, doc_type)
+    response = api_schemas.ManageOptionResponse(status_code=200, data=data)
 
-    return data
+    return response
+
+async def get_chat_history(user_id):
+
+    data = db_op.extract_all_chat_history_by_user_id(user_id)
+    response = api_schemas.ChatHistoryRespponse(status_code=200, data=data)
+    
+    return response

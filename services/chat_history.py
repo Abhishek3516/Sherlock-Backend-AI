@@ -40,17 +40,15 @@ class ChatHistory:
         """
             
         # Use parameterized query to properly handle string values
-        query = """
-        INSERT INTO public.chat_history_table 
-        (user_id, session_id, doc_category, question, response)
-        VALUES (%s, %s, %s, %s, %s)
-        """
-        
+        query = """INSERT INTO public.chat_history_table 
+                (user_id, session_id, doc_category, question, response)
+                VALUES (%s, %s, %s, %s, %s)"""
+        doc_category_string = ','.join(doc_category)
         try:
             with self._get_connection() as conn:
                 with conn.cursor() as cur:
                     # Pass values as a tuple to properly handle quoting and escaping
-                    cur.execute(query, (user_id, session_id, doc_category, question, response))
+                    cur.execute(query, (user_id, session_id, doc_category_string, question, response))
                     conn.commit()
                     print(f"Successfully inserted record for session {session_id}.")
                     return True
