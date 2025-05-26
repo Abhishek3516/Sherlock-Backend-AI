@@ -69,16 +69,25 @@ class RUN_Inference:
         parent_chunk_filtered = [i.page_content for i in parent_chunk_filtered]
         return parent_chunk_filtered
     
-    def get_docs_v2(self,question,document_type, file_ids = None, threshold=None,k=5):
+    def get_docs_v2(self,question,document_type, doc_file_mapping = None, threshold=None,k=5):
         try: 
             thresh_filter_chunks = []
             parent_chunk_filtered = []
 
-            filter_dict = {"doc_type": document_type}
-        
-            # Add file_ids to filter if provided
-            if (file_ids is not None) and len(file_ids) > 0:
-                filter_dict["file_id"] = {"$in": file_ids}
+            # Handle doc_file_mapping parameter
+            if doc_file_mapping is not None:
+                or_conditions = []
+                for doc_type, file_ids in doc_file_mapping.items():
+                    condition = {"doc_type": doc_type}
+                    if file_ids and len(file_ids) > 0:
+                        condition["file_id"] = {"$in": file_ids}
+                    or_conditions.append(condition)
+            
+                filter_dict = {"$or": or_conditions}
+
+            else:
+                # doc_file_mapping is None: filter rows according to the list of document_type.
+                filter_dict = {"doc_type": {"$in": document_type}}
 
             child_chunks = child_vecDB.similarity_search_with_relevance_scores(question,k=30,filter = filter_dict)
             chunk_scores = [chunk[1] for chunk in child_chunks]
@@ -101,6 +110,8 @@ class RUN_Inference:
     
     def conversation_rephrase(self,question,selected_doc_type,session_id):
         #Get history
+
+        selected_doc_type = ','.join(selected_doc_type)
         df_history = chat_history_obj.get_chat_history(selected_doc_type,session_id=session_id)
         
         if df_history.shape[0]==0:
@@ -127,19 +138,27 @@ class RUN_Inference:
 
     
 
-    def get_answer(self,question,selected_doc_type, user_id, file_ids=None):
+    def get_answer(
+            self,
+            question, 
+            selected_doc_type, 
+            user_id, 
+            session_id, 
+            doc_file_mapping
+        ):
 
-        session_id = str(uuid.uuid4())
+        if session_id is None or session_id == "":
+            session_id = str(uuid.uuid4())
         
-        context = self.get_docs_v2(question,document_type=selected_doc_type, file_ids= file_ids)
+        context = self.get_docs_v2(question,document_type=selected_doc_type, doc_file_mapping= doc_file_mapping)
         
-        question = self.conversation_rephrase(question,selected_doc_type, session_id)
+        question_result = self.conversation_rephrase(question,selected_doc_type, session_id)
         
         #context = ''.join(context)
         prompt = f"""
         <Problem Statement>
         Using only the context, Think carefully then craft your detailed(if required) answer the user question. If answer is not in the context then say "I don't have the answer".
-        user question: {question}
+        user question: {question_result}
         </Problem Statement>
 
         <Answer Structure>
