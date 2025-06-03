@@ -13,7 +13,7 @@ class ChatRequestBody(BaseModel):
         examples=["uuid value"],
         description="Optional session identifier for conversation tracking"
     )
-    doc_type_file_mapping: Optional[dict] = Field(
+    folder_file_mapping: Optional[dict] = Field(
         None,
         examples=[{
                 "doc type 1": ["file_001", "file_002"],
@@ -21,7 +21,7 @@ class ChatRequestBody(BaseModel):
             }],
             description="Mapping of document types to their corresponding file IDs."
             )
-    doc_type: List[str] = Field(
+    folders: List[str] = Field(
         ...,
         examples=[["doc type 1", "doc type 2"]],
         description="List of document types to search within."
@@ -35,7 +35,7 @@ class ChatRequestBody(BaseModel):
 class UploadFilesResponse(BaseModel):
     status_code: int
     message: str
-    data: List[dict]
+    data: dict
 
 class ManageOptionResponse(BaseModel):
     status_code: int
@@ -43,4 +43,9 @@ class ManageOptionResponse(BaseModel):
 
 class ChatHistoryRespponse(BaseModel):
     status_code: int
-    data: List[dict]
+    data: dict
+
+class CommonResponse(BaseModel):
+    status_code: int
+    data: str
+                                    

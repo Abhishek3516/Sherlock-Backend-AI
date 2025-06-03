@@ -26,12 +26,12 @@ router = APIRouter(
 
 @router.post(
         "/upload-files", 
-        summary="Upload files and conversations",
+        summary="Upload files",
         description="Upload multiple files for document processing with user and document type information"
     )
 @decorators.log_requests
 async def upload_files(
-                doc_type: str = Form(...),
+                folder: str = Form(...),
                 user_id: str = Form(...),
                 files: List[UploadFile]= File(...)
             ):
@@ -39,17 +39,17 @@ async def upload_files(
     """
         Upload files and save embeddings into database with validation and error handling.
         
-        - **doc_type**: Type of document being uploaded.
+        - **folder**: Type of document being uploaded.
         - **user_id**: ID of the user uploading files.
         - **files**: List of files to upload.
     """
     
-    file_details = await api_service.upload_files_create_embeddings(files, doc_type, user_id)
+    file_details, rejected_files = await api_service.upload_files_create_embeddings(files, folder, user_id)
 
     response = api_schemas.UploadFilesResponse(
                             status_code=201, 
-                            message= f"Successfully uploaded and processed {len(response)} files.", 
-                            data = file_details
+                            message= f"Successfully uploaded and processed {len(file_details)} files.", 
+                            data = {"excepted_files": file_details, "rejected_files": rejected_files}
                         )
     return response
 
@@ -83,16 +83,16 @@ async def chat(request: api_schemas.ChatRequestBody):
 @decorators.log_requests
 async def add_new_option(
             user_id: str,
-            new_option: str 
+            folder_name: str 
         ):
     """
         Add a new document category option or folders.
         
         - **user_id**: ID of the user adding the option.
-        - **new_option**: Name of the new category or folder to add.
+        - **folder_name**: Name of the new category or folder to add.
     """
 
-    response = await api_service.add_new_category(user_id, new_option)
+    response = await api_service.add_new_category(user_id, folder_name)
 
     return response
 
@@ -125,7 +125,7 @@ async def manage_options(
 @decorators.log_requests
 async def get_uploaded_file_details_by_doc_type(
             user_id: str,
-            doc_type: str 
+            folder: str 
         ):
     """
         Get uploaded file details filtered by document type.
@@ -135,7 +135,7 @@ async def get_uploaded_file_details_by_doc_type(
 
     """
 
-    response = await api_service.file_details_by_doc_type(user_id, doc_type)
+    response = await api_service.file_details_by_doc_type(user_id, folder)
 
     return response
 
@@ -155,6 +155,27 @@ async def get_all_chat_history_by_user_id(
     """
 
     response = await api_service.get_chat_history(user_id)
+
+    return response
+
+@router.get(
+        "/session-chat-history",
+        summary="Get user's session chat history.",
+        description="Retrieve session chat history for a user."
+    )
+@decorators.log_requests
+async def get_session_chat_history_by_session_id(
+            user_id: str,
+            session_id: str
+        ):
+    """
+        Get session chat history for a user.
+        
+        - **user_id**: ID of the user whose chat history to retrieve.
+        - **session_id**: ID of the session whose chat history to retrieve.
+    """
+
+    response = await api_service.get_session_chat_history(user_id, session_id)
 
     return response
 

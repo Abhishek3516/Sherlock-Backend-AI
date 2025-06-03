@@ -206,6 +206,56 @@ class DatabaseOperations:
         query = """
                     SELECT
                         user_id,
+                        session_ids,
+                        created_time
+                    FROM (
+                        SELECT
+                            user_id,
+                            array_agg(DISTINCT session_id ORDER BY session_id) as session_ids,
+                            MIN(created_time) as created_time
+                        FROM (
+                            SELECT
+                                user_id,
+                                session_id,
+                                MIN(time_stamp) as created_time
+                            FROM (
+                                SELECT
+                                    user_id,
+                                    session_id,
+                                    time_stamp,
+                                    TRIM(unnest(string_to_array(doc_category, ','))) as unnested_doc_type
+                                FROM public.chat_history_table
+                                WHERE doc_category IS NOT NULL AND doc_category != ''
+                            ) t1
+                            WHERE t1.user_id = %s
+                            GROUP BY user_id, session_id
+                        ) session_data
+                        GROUP BY user_id
+                    ) user_data;
+                """ 
+        try:
+            with self._get_connection() as conn:
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    cur.execute(query, (user_id,))
+                    result = cur.fetchone()
+
+                    if not result:
+                        pass
+                    return result
+        except psycopg2.Error as e:
+            print(f"Error extracting data: {e}")
+            raise HTTPException(status_code = status, detail = str(e))
+        
+    def extract_session_chat_history_by_user_and_session_id(self, user_id, session_id):
+        """
+            Extract session chat history data according to the given user id and session id from user_chat_history_table table.
+
+            Returns:
+                Dict[str, Any]: Query results formatted as a dictionary .
+        """
+        query = """ 
+                    SELECT
+                        user_id,
                         session_id,
                         doc_types,
                         response_content,
@@ -234,7 +284,7 @@ class DatabaseOperations:
                             ) as response_content,
                             MIN(time_stamp) as created_time
                         FROM (
-                            SELECT 
+                            SELECT
                                 user_id,
                                 session_id,
                                 time_stamp,
@@ -244,16 +294,18 @@ class DatabaseOperations:
                             FROM public.chat_history_table
                             WHERE doc_category IS NOT NULL AND doc_category != ''
                         ) t1
-                        WHERE t1.user_id = %s
+                        WHERE t1.user_id = %s AND t1.session_id = %s
                         GROUP BY user_id, session_id
-                    ) grouped_data
-                    ORDER BY user_id, session_id;
-                """ 
+                ) grouped_data
+                ORDER BY user_id, session_id;
+
+            """
+        
         try:
             with self._get_connection() as conn:
                 with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                    cur.execute(query, (user_id,))
-                    result = cur.fetchall()
+                    cur.execute(query, (user_id, session_id,))
+                    result = cur.fetchone()
 
                     if not result:
                         pass
