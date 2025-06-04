@@ -179,6 +179,23 @@ def get_plan_details(plan_id) -> str:
     except PyMongoError as e:
         print(f"Error fetching plan details: {e}")
         return None
+    
+def update_page_count_by_user_id(user_id, total_pages_count):
+    try:
+        result = mongo_database.users_collection.update_one(
+            {"user_id": user_id},  # Filter
+            {"$set": {"uploaded_pages_count": total_pages_count}}  # Update operation
+        )
+        if result.matched_count > 0:
+            print(f"Successfully updated {total_pages_count} for user {user_id}")
+            return True
+        else:
+            print(f"No user found with user_id: {user_id}")
+            return False
+            
+    except Exception as e:
+        print(f"Error updating user field: {e}")
+        return False
 
 ##############################################################################################################
 
@@ -200,69 +217,95 @@ async def upload_files_create_embeddings(files, doc_type, user_id):
                 - message: Status message
     """
 
-    # 1. Get user details from MongoDB
-    user_details = get_user_details(user_id)
+    # Plan limits configuration
+    PLAN_LIMITS = {
+        "trial": 15000,
+        "active": {
+            "standard": 15000,
+            "growth": 50000,
+            "scale": 150000
+        }
+    }
 
-    user_subs_status = user_details.get("status")
-    uploaded_pages_count = user_details.get("uploaded_pages_count")
+    try:
+        # 1. Get user details from MongoDB
+        user_details = get_user_details(user_id)
 
-    plan_name = get_plan_details(user_details.get("current_subscriptions")["plan_id"])
+        user_subs_status = user_details.get("status")
+        uploaded_pages_count = user_details.get("uploaded_pages_count", 0)
 
-    if not plan_name:
-        raise HTTPException(status_code= status.HTTP_400_BAD_REQUEST, detail= "The subscribed plan is not found.")
+        plan_id = user_details.get("current_subscriptions", {}).get("plan_id")
 
-    if user_subs_status == "expired":
-        raise HTTPException(status_code= status.HTTP_400_BAD_REQUEST, detail = "Please upgrade your subscription plan. The page upload limit has been exceeded.")
+        plan_name = get_plan_details(plan_id)
 
-    # Calculate total pages in new files before processing
-    total_new_pages = 0
-    total_pages_count = 0
-    for file in files:
-        if not file.filename.lower().endswith('.pdf'):
-            continue
+        if not plan_name:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="The subscribed plan is not found."
+                )
+
+        if user_subs_status == "expired":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Please subscribe any plans to continue."
+            )
         
-        try:
-            file_content = await file.read()
-            pages_count = get_pdf_page_count(file_content)
-
-            total_new_pages += pages_count
-
-        except Exception as e:
-            print(f"Error reading PDF {file.filename}: {e}")
-            continue
-
-    total_pages_count = uploaded_pages_count + total_new_pages
-    if user_subs_status == "trial":
-        if total_pages_count <= 15000:
-            file_details, rejected_files = await files_upload_and_processing(files, doc_type, user_id)
-            return file_details, rejected_files 
+        # Determine page limit based on subscription status and plan
+        if user_subs_status == "trial":
+            page_limit = PLAN_LIMITS["trial"]
+        elif user_subs_status == "active":
+            if plan_name not in PLAN_LIMITS["active"]:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid subscription plan."
+                )
+            page_limit = PLAN_LIMITS["active"][plan_name]
         else:
-            raise HTTPException(status_code= status.HTTP_400_BAD_REQUEST, detail = "Please upgrade your subscription plan. The page upload limit has been exceeded.")
-        
-    elif user_subs_status == "active":
-        if plan_name == "standard":
-            if total_pages_count <= 15000:
-                file_details, rejected_files = await files_upload_and_processing(files, doc_type, user_id)
-                return file_details, rejected_files 
-            else:
-                raise HTTPException(status_code= status.HTTP_400_BAD_REQUEST, detail = "Please upgrade your subscription plan. The page upload limit has been exceeded.") 
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid subscription status."
+            )
+
+        # Calculate total pages in new files before processing
+        total_new_pages = 0
+        total_pages_count = 0
+        for file in files:
+            if not file.filename.lower().endswith('.pdf'):
+                continue
             
-        elif plan_name == "growth":
-            if total_pages_count <= 50000:
-                file_details, rejected_files = await files_upload_and_processing(files, doc_type, user_id)
-                return file_details, rejected_files 
-            else:
-                raise HTTPException(status_code= status.HTTP_400_BAD_REQUEST, detail = "Please upgrade your subscription plan. The page upload limit has been exceeded.")
-    
-        elif plan_name == "scale":
-            if total_pages_count <= 150000:
-                file_details, rejected_files = await files_upload_and_processing(files, doc_type, user_id)
-                return file_details, rejected_files 
-            else:
-                raise HTTPException(status_code= status.HTTP_400_BAD_REQUEST, detail = "Please upgrade your subscription plan. The page upload limit has been exceeded.")
+            try:
+                file_content = await file.read()
+                total_new_pages += get_pdf_page_count(file_content)
+
+            except Exception as e:
+                print(f"Error reading PDF {file.filename}: {e}")
+                continue
+
+        total_pages_count = uploaded_pages_count + total_new_pages
+
+        # Check page limit
+        if total_pages_count > page_limit:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Please upgrade your subscription plan. The page upload limit has been exceeded."
+            )
         
-        else:
-            raise HTTPException(status_code= status.HTTP_400_BAD_REQUEST, detail= "Something went wrong, try again after sometime.")
+        # Update page count and process files
+        if not update_page_count_by_user_id(user_id, total_pages_count):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Something went wrong, try again after sometime."
+            )
+        
+        file_details, rejected_files = await files_upload_and_processing(files, doc_type, user_id)
+        
+        return file_details, rejected_files
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An unexpected error occurred: {str(e)}"
+        )
 
 
 async def add_new_category(user_id, new_option):
