@@ -322,13 +322,13 @@ async def manage_category(user_id):
     return response
 
 
-async def conversations(request):
+async def conversations(request, user_id):
     
     # Get answer
     response = inference_obj.get_answer(
         request.prompt, 
         selected_doc_type=request.folders, 
-        user_id=request.user_id,
+        user_id=user_id,
         session_id = request.session_id,
         doc_file_mapping = request.folder_file_mapping
     )

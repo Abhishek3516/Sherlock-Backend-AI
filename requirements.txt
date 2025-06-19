@@ -11,6 +11,7 @@ psycopg-binary
 python-dotenv
 python-multipart
 pymongo
+pydantic[email]
 
 # To install psycopg2 follow below installations
  
